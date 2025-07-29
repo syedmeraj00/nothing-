@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: Additional custom global styles */
+body {
+  @apply bg-[#dbe4f0]; /* Matches your app background */
+  font-family: 'Inter', sans-serif;
+}
