@@ -1,5 +1,7 @@
-const { DataTypes } = require("sequelize");
-const { sequelize } = require("../config/db");
+const Sequelize = require("sequelize");
+const DataTypes = Sequelize.DataTypes;
+const db = require("../config/db");
+const sequelize = db.sequelize;
 
 const ESGData = sequelize.define("esg_data", {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -15,6 +17,21 @@ const ESGData = sequelize.define("esg_data", {
 }, {
   timestamps: false,
   freezeTableName: true,
+  indexes: [
+    {
+      fields: ['companyName']
+    },
+    {
+      fields: ['year']
+    },
+    {
+      fields: ['createdAt']
+    },
+    {
+      fields: ['companyName', 'year'],
+      unique: true
+    }
+  ]
 });
 
 module.exports = ESGData;
