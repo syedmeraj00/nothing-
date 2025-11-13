@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
-import { getStoredData, initializeStorage } from "./utils/storage";
+import { getStoredData } from "./utils/simpleStorage";
 import esgAPI from "./api/esgAPI";
 import APIService from "./services/apiService";
 import companyLogo from "./companyLogo.jpg";
@@ -53,8 +53,14 @@ function normalizeData(data) {
           if (item[cat]) {
             Object.entries(item[cat]).forEach(([key, value]) => {
               if (key !== 'description' && value !== '' && !isNaN(parseFloat(value))) {
+                // Find matching raw data item for ID
+                const rawItem = item.rawData ? item.rawData.find(r => 
+                  r.category === cat && r.metric === key
+                ) : null;
+                
                 results.push({
                   ...item,
+                  id: rawItem ? rawItem.id : null,
                   category: cat,
                   metric: key,
                   value: parseFloat(value),
@@ -155,40 +161,41 @@ function Reports() {
     const normalized = normalizeData(data);
     const envData = normalized.filter(item => item.category === 'environmental');
     const metrics = [
-      { name: 'Total Electricity Consumption', value: getMetricValue(envData, 'energyConsumption') + ' kWh' },
-      { name: 'Renewable Electricity Consumption', value: getMetricValue(envData, 'renewableEnergyRatio') + ' kWh' },
-      { name: 'Total Fuel Consumption', value: '15000 liters' },
-      { name: 'Carbon Emissions', value: getMetricValue(envData, 'carbonEmissions') + ' T CO2e' },
-      { name: 'Water Usage', value: getMetricValue(envData, 'waterUsage') + ' cubic meters' },
-      { name: 'Waste Management', value: getMetricValue(envData, 'wasteManagement') + ' tons' }
+      { name: 'Scope 1 Emissions', value: getMetricValue(envData, 'scope1Emissions'), unit: ' tCO2e' },
+      { name: 'Scope 2 Emissions', value: getMetricValue(envData, 'scope2Emissions'), unit: ' tCO2e' },
+      { name: 'Scope 3 Emissions', value: getMetricValue(envData, 'scope3Emissions'), unit: ' tCO2e' },
+      { name: 'Energy Consumption', value: getMetricValue(envData, 'energyConsumption'), unit: ' MWh' },
+      { name: 'Renewable Energy', value: getMetricValue(envData, 'renewableEnergyPercentage'), unit: ' %' },
+      { name: 'Water Withdrawal', value: getMetricValue(envData, 'waterWithdrawal'), unit: ' m³' },
+      { name: 'Waste Generated', value: getMetricValue(envData, 'wasteGenerated'), unit: ' tonnes' }
     ];
-    return metrics.filter(m => m.value && String(m.value).trim() !== '' && !String(m.value).startsWith(' '));
+    return metrics.filter(m => m.value > 0).map(m => ({ name: m.name, value: m.value + m.unit }));
   };
 
   const getSocialMetrics = () => {
     const normalized = normalizeData(data);
     const socialData = normalized.filter(item => item.category === 'social');
-    return [
-      { name: 'Total Number of Employees', value: '100' },
-      { name: 'Number of Female Employees', value: Math.round(getMetricValue(socialData, 'diversityRatio') * 0.5) || '50' },
-      { name: 'Average Training Hours per Employee', value: getMetricValue(socialData, 'trainingHours') + ' hrs/yr' },
-      { name: 'Community Investment Spend', value: getMetricValue(socialData, 'communityInvestment') + ' INR' },
-      { name: 'Employee Turnover Rate', value: getMetricValue(socialData, 'employeeTurnover') + ' %' },
-      { name: 'Workplace Safety Incidents', value: getMetricValue(socialData, 'workplaceSafety') }
-    ].filter(m => m.value && String(m.value).trim() !== '');
+    const metrics = [
+      { name: 'Total Employees', value: getMetricValue(socialData, 'totalEmployees'), unit: '' },
+      { name: 'Female Employees', value: getMetricValue(socialData, 'femaleEmployeesPercentage'), unit: ' %' },
+      { name: 'Lost Time Injury Rate', value: getMetricValue(socialData, 'lostTimeInjuryRate'), unit: '' },
+      { name: 'Training Hours per Employee', value: getMetricValue(socialData, 'trainingHoursPerEmployee'), unit: ' hrs' },
+      { name: 'Community Investment', value: getMetricValue(socialData, 'communityInvestment'), unit: ' $' }
+    ];
+    return metrics.filter(m => m.value > 0).map(m => ({ name: m.name, value: m.value + m.unit }));
   };
 
   const getGovernanceMetrics = () => {
     const normalized = normalizeData(data);
     const govData = normalized.filter(item => item.category === 'governance');
-    return [
-      { name: '% of Independent Board Members', value: getMetricValue(govData, 'boardDiversity') + ' %' },
-      { name: 'Data Privacy Policy', value: 'Yes' },
-      { name: 'Total Revenue', value: '3000000 INR' },
-      { name: 'Ethics Violations', value: getMetricValue(govData, 'ethicsViolations') },
-      { name: 'Transparency Score', value: getMetricValue(govData, 'transparencyScore') + ' %' },
-      { name: 'Risk Management Score', value: getMetricValue(govData, 'riskManagement') + ' %' }
-    ].filter(m => m.value && String(m.value).trim() !== '');
+    const metrics = [
+      { name: 'Board Size', value: getMetricValue(govData, 'boardSize'), unit: '' },
+      { name: 'Independent Directors', value: getMetricValue(govData, 'independentDirectorsPercentage'), unit: ' %' },
+      { name: 'Female Directors', value: getMetricValue(govData, 'femaleDirectorsPercentage'), unit: ' %' },
+      { name: 'Ethics Training Completion', value: getMetricValue(govData, 'ethicsTrainingCompletion'), unit: ' %' },
+      { name: 'Corruption Incidents', value: getMetricValue(govData, 'corruptionIncidents'), unit: '' }
+    ];
+    return metrics.filter(m => m.value >= 0).map(m => ({ name: m.name, value: m.value + m.unit }));
   };
 
   const getCalculatedMetrics = () => {
@@ -369,17 +376,66 @@ function Reports() {
 
   const refreshData = async () => {
     try {
-      // Check localStorage first
-      const localData = getStoredData();
-      if (localData && localData.length > 0) {
-        const convertedData = localData.map(item => ({
-          ...item,
-          status: item.status || 'Submitted',
-          timestamp: item.timestamp || item.submissionDate || new Date().toISOString()
+      console.log('🔄 Fetching ESG data...');
+      const result = await APIService.getESGData('admin@esgenius.com');
+      console.log('📊 API result:', result);
+      
+      if (result.success && result.data && result.data.length > 0) {
+        console.log('✅ Processing', result.data.length, 'records');
+        
+        // ✅ FIX: Transform flat metric rows to nested company data structure
+        // Backend returns: [{companyName, category, metric_name, metric_value}, ...]
+        // We need: [{companyName, environmental: {...}, social: {...}, ...}, ...]
+        
+        const groupedByCompanyYear = {};
+        
+        // Store raw data with IDs for deletion
+        const rawDataWithIds = result.data.map(row => ({
+          id: row.id,
+          companyName: row.companyName,
+          category: row.category,
+          metric: row.metric_name,
+          value: row.metric_value,
+          timestamp: row.created_at,
+          reportingYear: row.reporting_year,
+          sector: row.sector,
+          region: row.region
         }));
         
-        setData(convertedData);
-        const normalized = normalizeData(convertedData);
+        result.data.forEach(row => {
+          const key = `${row.companyName}-${row.reporting_year}`;
+          
+          if (!groupedByCompanyYear[key]) {
+            groupedByCompanyYear[key] = {
+              companyName: row.companyName,
+              sector: row.sector || '',
+              region: row.region || '',
+              year: row.reporting_year,
+              timestamp: row.created_at || new Date().toISOString(),
+              environmental: {},
+              social: {},
+              governance: {},
+              rawData: rawDataWithIds.filter(item => 
+                item.companyName === row.companyName && 
+                item.reportingYear === row.reporting_year
+              )
+            };
+          }
+          
+          // Add metric to appropriate category
+          const category = row.category; // 'environmental', 'social', or 'governance'
+          if (groupedByCompanyYear[key][category]) {
+            groupedByCompanyYear[key][category][row.metric_name] = row.metric_value;
+          }
+        });
+        
+        const processedData = Object.values(groupedByCompanyYear);
+        console.log('📈 Transformed data:', processedData);
+        setData(processedData);
+        
+        const normalized = normalizeData(processedData);
+        console.log('🔢 Normalized:', normalized.length, 'metrics');
+        
         setYearlyData(aggregateByYear(normalized));
         setOverallSummary(aggregateOverall(normalized));
         
@@ -390,7 +446,7 @@ function Reports() {
         return;
       }
       
-      // Add sample data if no local data
+      console.log('⚠️ No database data, using sample data');
       const sampleAdded = addSampleDataToStorage();
       if (sampleAdded) {
         const convertedSampleData = sampleESGData.map(item => ({
@@ -410,7 +466,7 @@ function Reports() {
         }
       }
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Database error:', error);
       setData([]);
       setYearlyData([]);
       setOverallSummary({});
@@ -548,8 +604,16 @@ function Reports() {
       const itemToDelete = filteredData[displayIndex];
       
       try {
-        // Delete via backend API (implementation depends on backend)
-        // For now, just refresh data to reflect backend state
+        // Delete from backend if item has an ID
+        if (itemToDelete.id) {
+          const result = await APIService.deleteESGData(itemToDelete.id);
+          if (!result.success) {
+            showToast('Failed to delete from database', 'error');
+            return;
+          }
+        }
+        
+        // Refresh data from backend to get updated state
         await refreshData();
         setSelectedItems([]);
         showToast('Item deleted successfully', 'success');
@@ -598,9 +662,7 @@ function Reports() {
     return Object.entries(categoryCount).map(([name, value]) => ({ name, value }));
   };
 
-  const filteredData = normalizeData(data).filter((item) => {
-    return filterStatus === "All" || item.status === filterStatus;
-  });
+  const filteredData = getFilteredAndSortedData();
 
   const exportPDFSimple = () => {
     const esgData = getStoredData();
@@ -995,9 +1057,90 @@ function Reports() {
             icon: '🔄'
           },
           {
+            label: 'Download All Reports',
+            onClick: () => {
+              const reportData = normalizeData(data).map(item => ({
+                category: item.category,
+                metric: item.metric,
+                value: item.value,
+                subcategory: item.metric,
+                unit: '',
+                target: null,
+                source: 'ESG Reports Dashboard'
+              }));
+              
+              const pdf = new jsPDF();
+              const reportTypes = ['SEBI BRSR', 'GRI Standards', 'Carbon Report', 'TCFD', 'SASB'];
+              
+              reportTypes.forEach((reportType, index) => {
+                if (index > 0) pdf.addPage();
+                
+                // Add report header
+                pdf.setFontSize(20);
+                pdf.setTextColor(0, 102, 51);
+                pdf.text(`${reportType} REPORT`, 20, 25);
+                
+                pdf.setFontSize(12);
+                pdf.setTextColor(0, 0, 0);
+                pdf.text(`Generated: ${new Date().toLocaleDateString()}`, 20, 40);
+                pdf.text(`Company: ESGenius Tech Solutions`, 20, 50);
+                pdf.text(`Year: ${selectedYear || new Date().getFullYear()}`, 20, 60);
+                
+                // Add metrics summary
+                let yPos = 80;
+                ['environmental', 'social', 'governance'].forEach(category => {
+                  const categoryData = reportData.filter(item => item.category === category);
+                  if (categoryData.length > 0) {
+                    pdf.setFontSize(14);
+                    pdf.setTextColor(0, 102, 51);
+                    pdf.text(category.toUpperCase(), 20, yPos);
+                    yPos += 15;
+                    
+                    pdf.setFontSize(10);
+                    pdf.setTextColor(0, 0, 0);
+                    categoryData.slice(0, 10).forEach(item => {
+                      pdf.text(`${item.metric}: ${item.value}`, 25, yPos);
+                      yPos += 8;
+                    });
+                    yPos += 10;
+                  }
+                });
+              });
+              
+              pdf.save(`All-ESG-Reports-${new Date().toISOString().split('T')[0]}.pdf`);
+              showToast('All reports downloaded successfully!', 'success');
+            },
+            variant: 'primary',
+            icon: '📦'
+          },
+          {
+            label: 'Export Current Report',
+            onClick: () => {
+              const reportData = normalizeData(data).map(item => ({
+                category: item.category,
+                metric: item.metric,
+                value: item.value,
+                subcategory: item.metric,
+                unit: '',
+                target: null,
+                source: 'ESG Reports Dashboard'
+              }));
+              
+              const pdf = generateProfessionalESGReport(selectedReport, reportData, {
+                companyName: 'ESGenius Tech Solutions',
+                reportPeriod: selectedYear || new Date().getFullYear()
+              });
+              
+              pdf.save(`ESG-Report-${selectedReport.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`);
+              showToast('PDF report exported successfully!', 'success');
+            },
+            variant: 'outline',
+            icon: '📄'
+          },
+          {
             label: 'View Data Entry',
             onClick: () => window.location.href = '/data-entry',
-            variant: 'primary',
+            variant: 'outline',
             icon: '📝'
           }
         ]}
@@ -1020,6 +1163,17 @@ function Reports() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  console.log('Testing API connection...');
+                  const result = await APIService.getESGData();
+                  console.log('Test result:', result);
+                  alert(`API Test: ${result.success ? 'Connected' : 'Failed'} - ${result.message || 'Check console'}`);
+                }}
+                className="px-3 py-1 bg-gray-600 text-white rounded text-xs"
+              >
+                🔧 Test API
+              </button>
               {data.length === 0 && (
                 <div className="flex gap-2">
                   <button
@@ -1430,11 +1584,37 @@ function Reports() {
                       <h3 className={`font-semibold ${theme.text.primary}`}>{report.type}</h3>
                       <p className={`text-sm mt-1 ${theme.text.secondary}`}>{report.description}</p>
                     </div>
-                    {selectedReport === report.type && (
-                      <div className="ml-2">
+                    <div className="ml-2 flex items-center gap-2">
+                      {selectedReport === report.type && (
                         <span className="text-green-500 text-lg">✓</span>
-                      </div>
-                    )}
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const reportData = normalizeData(data).map(item => ({
+                            category: item.category,
+                            metric: item.metric,
+                            value: item.value,
+                            subcategory: item.metric,
+                            unit: '',
+                            target: null,
+                            source: 'ESG Reports Dashboard'
+                          }));
+                          
+                          const pdf = generateProfessionalESGReport(report.type, reportData, {
+                            companyName: 'ESGenius Tech Solutions',
+                            reportPeriod: selectedYear || new Date().getFullYear()
+                          });
+                          
+                          pdf.save(`${report.type.replace(/\s+/g, '-')}-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+                          showToast(`${report.type} report downloaded!`, 'success');
+                        }}
+                        className={`p-1 rounded hover:${theme.bg.subtle} transition-colors`}
+                        title={`Download ${report.type} Report`}
+                      >
+                        📥
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-3 flex items-center gap-2">
                     <span className={`text-xs px-2 py-1 rounded-full ${
@@ -1613,7 +1793,7 @@ function Reports() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {getFilteredAndSortedData().map((item, idx) => (
+                  {filteredData.map((item, idx) => (
                     <tr key={idx} className={`transition-colors duration-200 ${
                       selectedItems.includes(idx) 
                         ? `${theme.bg.accent} border-l-4 border-blue-500` 

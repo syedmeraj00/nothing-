@@ -1,5 +1,5 @@
 const express = require('express');
-const { sequelize } = require('../config/db');
+const { sequelize } = require('../config/database');
 const router = express.Router();
 
 // Health check endpoint

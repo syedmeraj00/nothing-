@@ -3,7 +3,7 @@ import { FaFileUpload, FaCheckCircle, FaClock, FaExclamationTriangle, FaDownload
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "./contexts/ThemeContext";
 import { getThemeClasses } from "./utils/themeUtils";
-import ProfessionalHeader from "./components/ProfessionalHeader";
+import ProfessionalHeader from "./components/ProfessionalHeader.js";
 import esgAPI from "./api/esgAPI";
 
 // Add 3D animations and styles
@@ -128,7 +128,7 @@ const Compliance = () => {
         if (complianceResult.success) {
           setHistory(complianceResult.data.documents || mockComplianceData);
         } else {
-          setHistory(mockComplianceData);
+          setHistory([]);
         }
         
         const dashboardResult = await esgAPI.getDashboardData();
@@ -139,7 +139,7 @@ const Compliance = () => {
         setIsLoading(false);
       } catch (error) {
         console.error('Error loading compliance data:', error);
-        setHistory(mockComplianceData);
+        setHistory([]);
         setIsLoading(false);
       }
     };

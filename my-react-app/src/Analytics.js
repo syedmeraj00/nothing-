@@ -23,6 +23,7 @@ import { MetricCard, StatusCard } from "./components/ProfessionalCard";
 import { Alert, Button, LoadingSpinner, Toast } from "./components/ProfessionalUX";
 import { RBACManager, PERMISSIONS } from "./utils/rbac";
 import { ESG_FRAMEWORKS, STANDARD_METRICS } from "./utils/esgFrameworks";
+import { generateProfessionalESGReport } from "./utils/professionalPDFGenerator";
 
 ChartJS.register(
   ArcElement,
@@ -102,8 +103,16 @@ const Analytics = () => {
         ]);
         
         if (backendKPIs && !backendKPIs.error && backendData && !backendData.error) {
-          // Use backend data
-          const convertedData = backendData.map(item => ({
+          // Use backend data - handle both array and {success, data} formats
+          const dataArray = Array.isArray(backendData) ? backendData : (backendData.data || []);
+          
+          if (!dataArray || dataArray.length === 0) {
+            console.warn('No ESG data available');
+            setData([]);
+            return;
+          }
+          
+          const convertedData = dataArray.map(item => ({
             companyName: item.companyName,
             category: item.category,
             metric: item.metric_name,
@@ -180,6 +189,31 @@ const Analytics = () => {
 
   const handleLogout = () => {
     navigate("/login");
+  };
+
+  const handleExportPDF = () => {
+    try {
+      const reportData = data.map(item => ({
+        category: item.category,
+        metric: item.metric,
+        value: item.value,
+        subcategory: item.metric,
+        unit: '',
+        target: null,
+        source: 'ESG Analytics Dashboard'
+      }));
+      
+      const pdf = generateProfessionalESGReport(selectedFramework, reportData, {
+        companyName: 'ESGenius Tech Solutions',
+        reportPeriod: new Date().getFullYear()
+      });
+      
+      pdf.save(`ESG-Analytics-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+      setToast({ type: 'success', message: 'PDF report exported successfully!' });
+    } catch (error) {
+      console.error('PDF export error:', error);
+      setToast({ type: 'error', message: 'Failed to export PDF report' });
+    }
   };
 
   // Memoize chart data to prevent unnecessary re-renders
@@ -341,8 +375,16 @@ const Analytics = () => {
       ]);
       
       if (backendKPIs && !backendKPIs.error && backendData && !backendData.error) {
-        // Use backend data
-        const convertedData = backendData.map(item => ({
+        // Use backend data - handle both array and {success, data} formats
+        const dataArray = Array.isArray(backendData) ? backendData : (backendData.data || []);
+        
+        if (!dataArray || dataArray.length === 0) {
+          console.warn('No ESG data available');
+          setData([]);
+          return;
+        }
+        
+        const convertedData = dataArray.map(item => ({
           companyName: item.companyName,
           category: item.category,
           metric: item.metric_name,
@@ -429,10 +471,10 @@ const Analytics = () => {
             loading: refreshing
           },
           {
-            label: 'Export Analytics',
-            onClick: () => showToast('Analytics export feature coming soon', 'info'),
+            label: 'Export PDF Report',
+            onClick: handleExportPDF,
             variant: 'primary',
-            icon: '📥'
+            icon: '📄'
           }
         ]}
       />
@@ -480,6 +522,11 @@ const Analytics = () => {
                 <option value="governance">Governance (GRI-200 series)</option>
               </select>
               <select
+                value={selectedFramework}
+                onChange={(e) => {
+                  setSelectedFramework(e.target.value);
+                  showToast(`Switched to ${e.target.value} framework`, 'info');
+                }}
                 className={`border rounded-lg px-3 py-2 text-sm ${theme.bg.input} ${theme.border.input} ${theme.text.primary}`}
               >
                 <option value="GRI">GRI Standards</option>
@@ -718,18 +765,145 @@ const Analytics = () => {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {Object.entries(ESG_FRAMEWORKS).map(([key, framework]) => (
-              <div key={key} className={`p-4 rounded-lg border ${theme.bg.subtle} ${theme.border.secondary}`}>
+            {[
+              { name: 'GRI Standards', coverage: 85, description: 'Global Reporting Initiative compliance', color: 'green' },
+              { name: 'SASB Standards', coverage: 78, description: 'Industry-specific sustainability metrics', color: 'blue' },
+              { name: 'TCFD Framework', coverage: 72, description: 'Climate-related financial disclosures', color: 'purple' },
+              { name: 'CSRD/ESRS', coverage: 68, description: 'EU Corporate Sustainability Reporting', color: 'orange' }
+            ].map((framework, idx) => (
+              <div key={idx} className={`p-4 rounded-lg border ${theme.bg.subtle} ${theme.border.secondary} hover:shadow-md transition-shadow cursor-pointer`}
+                   onClick={() => {
+                     setSelectedFramework(framework.name.split(' ')[0]);
+                     showToast(`Switched to ${framework.name} view`, 'info');
+                   }}>
                 <h3 className={`font-semibold ${theme.text.primary} mb-2`}>{framework.name}</h3>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className={theme.text.secondary}>Coverage:</span>
-                    <span className={`font-medium ${theme.text.primary}`}>85%</span>
+                    <span className={`font-medium ${theme.text.primary}`}>{framework.coverage}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-green-500 h-2 rounded-full" style={{width: '85%'}}></div>
+                    <div className={`h-2 rounded-full ${
+                      framework.color === 'green' ? 'bg-green-500' :
+                      framework.color === 'blue' ? 'bg-blue-500' :
+                      framework.color === 'purple' ? 'bg-purple-500' : 'bg-orange-500'
+                    }`} style={{width: `${framework.coverage}%`}}></div>
                   </div>
                   <span className={`text-xs ${theme.text.muted}`}>{framework.description}</span>
+                  <div className="flex items-center gap-1 mt-2">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      framework.coverage >= 80 ? 'bg-green-100 text-green-800' :
+                      framework.coverage >= 70 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {framework.coverage >= 80 ? 'Compliant' : framework.coverage >= 70 ? 'Partial' : 'Gap'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Framework-Specific Metrics */}
+        <div className={`mt-8 rounded-2xl p-6 border shadow-lg transition-all duration-300 ${theme.bg.card} ${theme.border.primary}`}>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className={`text-xl font-bold ${theme.text.primary}`}>{selectedFramework} Metrics Breakdown</h2>
+              <p className={`text-sm ${theme.text.secondary}`}>Framework-specific performance indicators</p>
+            </div>
+            <span className="text-2xl">📊</span>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {selectedFramework === 'GRI' && [
+              { series: 'GRI-200', name: 'Economic', metrics: ['201-1 Economic Performance', '205-3 Anti-corruption'], coverage: 85 },
+              { series: 'GRI-300', name: 'Environmental', metrics: ['305-1 Direct GHG', '306-2 Waste by type'], coverage: 78 },
+              { series: 'GRI-400', name: 'Social', metrics: ['401-1 Employee turnover', '405-1 Diversity'], coverage: 72 }
+            ].map((series, idx) => (
+              <div key={idx} className={`p-4 rounded-lg ${theme.bg.subtle} border ${theme.border.secondary}`}>
+                <h3 className={`font-semibold ${theme.text.primary} mb-2`}>{series.series} - {series.name}</h3>
+                <div className="space-y-2">
+                  {series.metrics.map((metric, i) => (
+                    <div key={i} className={`text-sm ${theme.text.secondary}`}>• {metric}</div>
+                  ))}
+                  <div className="mt-3">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Coverage</span>
+                      <span className={`font-medium ${theme.text.primary}`}>{series.coverage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-blue-500 h-2 rounded-full" style={{width: `${series.coverage}%`}}></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            {selectedFramework === 'SASB' && [
+              { category: 'Environment', metrics: ['GHG Emissions', 'Energy Management'], coverage: 82 },
+              { category: 'Social Capital', metrics: ['Data Privacy', 'Human Rights'], coverage: 75 },
+              { category: 'Human Capital', metrics: ['Employee Engagement', 'Diversity'], coverage: 68 }
+            ].map((cat, idx) => (
+              <div key={idx} className={`p-4 rounded-lg ${theme.bg.subtle} border ${theme.border.secondary}`}>
+                <h3 className={`font-semibold ${theme.text.primary} mb-2`}>{cat.category}</h3>
+                <div className="space-y-2">
+                  {cat.metrics.map((metric, i) => (
+                    <div key={i} className={`text-sm ${theme.text.secondary}`}>• {metric}</div>
+                  ))}
+                  <div className="mt-3">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Coverage</span>
+                      <span className={`font-medium ${theme.text.primary}`}>{cat.coverage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-purple-500 h-2 rounded-full" style={{width: `${cat.coverage}%`}}></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            {selectedFramework === 'TCFD' && [
+              { pillar: 'Governance', elements: ['Board Oversight', 'Management Role'], coverage: 90 },
+              { pillar: 'Strategy', elements: ['Risk Assessment', 'Scenario Analysis'], coverage: 65 },
+              { pillar: 'Risk Management', elements: ['Risk Identification', 'Risk Integration'], coverage: 70 },
+              { pillar: 'Metrics & Targets', elements: ['GHG Metrics', 'Climate Targets'], coverage: 80 }
+            ].slice(0, 3).map((pillar, idx) => (
+              <div key={idx} className={`p-4 rounded-lg ${theme.bg.subtle} border ${theme.border.secondary}`}>
+                <h3 className={`font-semibold ${theme.text.primary} mb-2`}>{pillar.pillar}</h3>
+                <div className="space-y-2">
+                  {pillar.elements.map((element, i) => (
+                    <div key={i} className={`text-sm ${theme.text.secondary}`}>• {element}</div>
+                  ))}
+                  <div className="mt-3">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Coverage</span>
+                      <span className={`font-medium ${theme.text.primary}`}>{pillar.coverage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-green-500 h-2 rounded-full" style={{width: `${pillar.coverage}%`}}></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            {selectedFramework === 'CSRD' && [
+              { standard: 'ESRS E1-E5', name: 'Environmental', coverage: 68 },
+              { standard: 'ESRS S1-S4', name: 'Social', coverage: 72 },
+              { standard: 'ESRS G1', name: 'Governance', coverage: 85 }
+            ].map((std, idx) => (
+              <div key={idx} className={`p-4 rounded-lg ${theme.bg.subtle} border ${theme.border.secondary}`}>
+                <h3 className={`font-semibold ${theme.text.primary} mb-2`}>{std.standard}</h3>
+                <p className={`text-sm ${theme.text.secondary} mb-3`}>{std.name} Standards</p>
+                <div className="mt-3">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Coverage</span>
+                    <span className={`font-medium ${theme.text.primary}`}>{std.coverage}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-orange-500 h-2 rounded-full" style={{width: `${std.coverage}%`}}></div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -747,24 +921,26 @@ const Analytics = () => {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Alert
-              type="success"
-              title="🌍 GRI-305 Compliance"
-              message="Scope 1 & 2 emissions tracking meets GRI-305 requirements. Consider adding Scope 3 for full compliance."
-              className="border-l-4 border-green-500"
-            />
-            <Alert
-              type="warning"
-              title="👥 GRI-405 Gap"
-              message="Diversity reporting incomplete. Add age and minority group breakdowns for GRI-405-1 compliance."
-              className="border-l-4 border-yellow-500"
-            />
-            <Alert
-              type="info"
-              title="🏛️ TCFD Readiness"
-              message="Governance structure documented. Add climate scenario analysis for full TCFD alignment."
-              className="border-l-4 border-blue-500"
-            />
+            {selectedFramework === 'GRI' && [
+              <Alert key="gri1" type="success" title="🌍 GRI-305 Compliance" message="Scope 1 & 2 emissions tracking meets GRI-305 requirements. Consider adding Scope 3 for full compliance." className="border-l-4 border-green-500" />,
+              <Alert key="gri2" type="warning" title="👥 GRI-405 Gap" message="Diversity reporting incomplete. Add age and minority group breakdowns for GRI-405-1 compliance." className="border-l-4 border-yellow-500" />,
+              <Alert key="gri3" type="info" title="💰 GRI-201 Economic" message="Economic performance indicators tracked. Add indirect economic impacts for comprehensive coverage." className="border-l-4 border-blue-500" />
+            ]}
+            {selectedFramework === 'SASB' && [
+              <Alert key="sasb1" type="success" title="🏭 Industry Metrics" message="Technology sector SASB metrics 78% complete. Strong data privacy and cybersecurity reporting." className="border-l-4 border-green-500" />,
+              <Alert key="sasb2" type="warning" title="⚡ Energy Management" message="Energy consumption data available. Add renewable energy percentage for SASB TC-SI-130a.1." className="border-l-4 border-yellow-500" />,
+              <Alert key="sasb3" type="info" title="👨‍💼 Human Capital" message="Employee metrics tracked. Consider adding skills development and retention data." className="border-l-4 border-blue-500" />
+            ]}
+            {selectedFramework === 'TCFD' && [
+              <Alert key="tcfd1" type="success" title="🏛️ Governance" message="Climate governance structure documented. Board oversight and management roles defined." className="border-l-4 border-green-500" />,
+              <Alert key="tcfd2" type="warning" title="🎯 Strategy" message="Climate risks identified. Add scenario analysis and business impact assessment." className="border-l-4 border-yellow-500" />,
+              <Alert key="tcfd3" type="info" title="📊 Metrics & Targets" message="GHG emissions tracked. Set science-based targets for complete TCFD alignment." className="border-l-4 border-blue-500" />
+            ]}
+            {selectedFramework === 'CSRD' && [
+              <Alert key="csrd1" type="success" title="🇪🇺 ESRS E1" message="Climate change metrics partially covered. Strong GHG emissions tracking foundation." className="border-l-4 border-green-500" />,
+              <Alert key="csrd2" type="warning" title="🌿 ESRS E2-E5" message="Environmental standards gaps. Add biodiversity, water, and circular economy metrics." className="border-l-4 border-yellow-500" />,
+              <Alert key="csrd3" type="info" title="👥 ESRS S1-S4" message="Social standards 68% complete. Enhance workforce and value chain social metrics." className="border-l-4 border-blue-500" />
+            ]}
           </div>
         </div>
 

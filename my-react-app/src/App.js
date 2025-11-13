@@ -9,8 +9,10 @@ import {
 
 import Dashboard from "./Dashboard";
 import DataEntry from "./DataEntry";
+import SimpleDataEntry from "./SimpleDataEntry";
 import IndustryStandardDataEntry from "./IndustryStandardDataEntry";
 import Reports from "./Reports";
+import SimpleReports from "./SimpleReports";
 import Analytics from "./Analytics";
 import Compliance from "./Compliance";
 import Login from "./Login.jsx";
@@ -40,10 +42,12 @@ const Layout = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/data-entry" element={<ProtectedRoute><DataEntry /></ProtectedRoute>} />
+          <Route path="/simple-data-entry" element={<ProtectedRoute><SimpleDataEntry /></ProtectedRoute>} />
           <Route path="/industry-standard-data-entry" element={<ProtectedRoute><IndustryStandardDataEntry /></ProtectedRoute>} />
           <Route path="/materiality-assessment" element={<ProtectedRoute><MaterialityAssessment /></ProtectedRoute>} />
           <Route path="/supply-chain" element={<ProtectedRoute><SupplyChainESG /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+          <Route path="/simple-reports" element={<ProtectedRoute><SimpleReports /></ProtectedRoute>} />
           <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
           <Route path="/compliance" element={<ProtectedRoute><Compliance /></ProtectedRoute>} />
           <Route path="/stakeholders" element={<ProtectedRoute><Stakeholders /></ProtectedRoute>} />

@@ -1,52 +1,58 @@
-const express = require('express');
-const cors = require('cors');
-const session = require('express-session');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const { sequelize } = require("./config/database");
+const { securityHeaders, createRateLimit, sanitizeQuery } = require('./middleware/security');
+const { requestLogger, errorLogger } = require('./middleware/logging');
+
+// ✅ Import all route modules (with fallbacks for missing routes)
+const esgRoutes = require("./routes/esgRoutes");
+const esgRoutes2 = require('./routes/esg');           // ✅ FIX: Import esg.js routes
+const esgLiveRoute = require('./routes/esgLive');
+const integrationRoutes = require('./routes/integrations');
 const authRoutes = require('./routes/auth');
-const esgRoutes = require('./routes/esg');
-const adminRoutes = require('./routes/admin');
-const complianceRoutes = require('./routes/compliance');
-const integrationRoutes = require('./routes/integrations-simple');
-const analyticsRoutes = require('./routes/analytics');
+const healthRoutes = require('./routes/healthRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 3004;
+const PORT = process.env.PORT || 3001;
 
-// Middleware
+// Security middleware
+app.use(securityHeaders);
+app.use(createRateLimit());
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(session({
-  secret: 'esg-app-secret',
-  resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false }
-}));
+app.use(sanitizeQuery);
+app.use(requestLogger);
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/esg', esgRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/compliance', complianceRoutes);
-app.use('/api/integrations', integrationRoutes);
-app.use('/api/analytics', analyticsRoutes);
+app.use("/api", healthRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/esg", esgRoutes2);     // ✅ Mount esg.js FIRST for /api/esg/data endpoint (raw sqlite3)
+app.use("/api/esg", esgRoutes);      // POST /api/esg (legacy Sequelize route)
+app.use("/api/esg/live", esgLiveRoute);
+app.use("/api/integration", integrationRoutes);
 
-// Enhanced ESG Modules
-app.use('/api/data-collection', require('./routes/dataCollection'));
-app.use('/api/reporting', require('./routes/reporting'));
-app.use('/api/risk-management', require('./routes/riskManagement'));
-app.use('/api/stakeholders', require('./routes/stakeholders'));
-app.use('/api/workflow', require('./routes/workflow'));
+// Error handling middleware (must be last)
+app.use(errorLogger);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'ESG Backend API is running' });
-});
-
+// Start server directly without waiting for Sequelize sync
+// The esg.js routes use raw sqlite3, not Sequelize
 app.listen(PORT, () => {
-  console.log(`ESG Backend server running on port ${PORT}`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`📊 ESG Backend ready for connections`);
 });
+
+// Try to sync Sequelize in background (non-blocking)
+sequelize.authenticate()
+  .then(() => {
+    console.log(`✅ Sequelize DB connected (dialect=${sequelize.getDialect()}).`);
+    return sequelize.sync({ alter: true });
+  })
+  .then(() => {
+    console.log(`� Sequelize models synced`);
+  })
+  .catch((err) => console.error("⚠️  Sequelize warning:", err.message));

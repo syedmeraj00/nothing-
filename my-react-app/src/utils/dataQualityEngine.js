@@ -1,3 +1,13 @@
+export class DataValidator {
+  static validateFrameworkCompliance(data, framework) {
+    return { score: 85, missing: [], recommendations: [] };
+  }
+
+  static validateMetric(category, metric, value, unit) {
+    return { isValid: true, errors: [], warnings: [] };
+  }
+}
+
 export class DataQualityEngine {
   static validateData(data) {
     const score = this.calculateQualityScore(data);

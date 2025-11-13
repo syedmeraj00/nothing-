@@ -11,7 +11,56 @@ const upload = multer({ dest: 'uploads/' });
 const router = express.Router();
 
 
-// POST: Add new ESG data
+// POST: Add new ESG data (new format)
+router.post("/data", async (req, res) => {
+  try {
+    const { companyName, sector, region, reportingYear, environmental, social, governance, userId } = req.body;
+    
+    console.log('Saving ESG data:', { companyName, userId, environmental, social, governance });
+    
+    if (!companyName) {
+      return res.status(400).json({ error: "Company name is required" });
+    }
+    
+    // Try to create with new fields, fallback to basic fields if columns don't exist
+    try {
+      const newEntry = await ESGData.create({
+        companyName,
+        year: parseInt(reportingYear) || new Date().getFullYear(),
+        environmentalScore: 0,
+        socialScore: 0, 
+        governanceScore: 0,
+        sector: sector || null,
+        region: region || null,
+        environmental: JSON.stringify(environmental || {}),
+        social: JSON.stringify(social || {}),
+        governance: JSON.stringify(governance || {}),
+        userId: userId || 'admin@esgenius.com'
+      });
+      
+      console.log('ESG data saved successfully:', newEntry.id);
+      res.status(201).json({ success: true, data: newEntry });
+    } catch (dbError) {
+      console.log('Database error, trying basic format:', dbError.message);
+      // Fallback to basic format if new columns don't exist
+      const basicEntry = await ESGData.create({
+        companyName,
+        year: parseInt(reportingYear) || new Date().getFullYear(),
+        environmentalScore: 0,
+        socialScore: 0, 
+        governanceScore: 0
+      });
+      
+      console.log('Basic ESG data saved:', basicEntry.id);
+      res.status(201).json({ success: true, data: basicEntry, note: 'Saved in basic format' });
+    }
+  } catch (error) {
+    console.error("Error creating ESG entry:", error);
+    res.status(500).json({ error: "Failed to create ESG data: " + error.message });
+  }
+});
+
+// POST: Add new ESG data (legacy format)
 router.post("/", authenticateToken, requireRole(['esg_manager', 'admin']), invalidateCache('/api/esg'), async (req, res) => {
   try {
     const { companyName, year, environmentalScore, socialScore, governanceScore, complianceRate, sustainabilityIndex } = req.body;
@@ -41,7 +90,38 @@ router.post("/", authenticateToken, requireRole(['esg_manager', 'admin']), inval
   }
 });
 
-// GET: Fetch all ESG records
+// GET: Fetch ESG data by user
+router.get("/data/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log('Fetching data for user:', userId);
+    
+    const records = await ESGData.findAll({ 
+      where: { userId: decodeURIComponent(userId) },
+      order: [["createdAt", "DESC"]] 
+    });
+    
+    console.log('Found records:', records.length);
+    
+    // Parse JSON fields
+    const processedRecords = records.map(record => {
+      const data = record.toJSON();
+      return {
+        ...data,
+        environmental: data.environmental ? JSON.parse(data.environmental) : {},
+        social: data.social ? JSON.parse(data.social) : {},
+        governance: data.governance ? JSON.parse(data.governance) : {}
+      };
+    });
+    
+    res.json({ success: true, data: processedRecords });
+  } catch (error) {
+    console.error("Error fetching ESG data:", error);
+    res.status(500).json({ error: "Failed to fetch data" });
+  }
+});
+
+// GET: Fetch all ESG records (legacy)
 router.get("/", cacheMiddleware(300), async (req, res) => {
   try {
     const records = await ESGData.findAll({ order: [["year", "DESC"]] });

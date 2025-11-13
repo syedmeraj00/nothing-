@@ -22,4 +22,4 @@ const sequelize = new Sequelize(useSQLite ? {
   }
 });
 
-module.exports = sequelize;
+module.exports = { sequelize };

@@ -120,8 +120,10 @@ function calculateAndSaveScores(companyId, userId, reportingYear, res) {
 router.get('/data/:userId', (req, res) => {
   const { userId } = req.params;
   
+  console.log(`📊 GET /data/:userId called with userId: ${userId}`);
+  
   db.all(
-    `SELECT c.name as companyName, c.sector, c.region, e.reporting_year, e.category, e.metric_name, e.metric_value, e.created_at
+    `SELECT e.id, c.name as companyName, c.sector, c.region, e.reporting_year, e.category, e.metric_name, e.metric_value, e.created_at
      FROM esg_data e 
      JOIN companies c ON e.company_id = c.id 
      WHERE e.user_id = ? 
@@ -129,9 +131,11 @@ router.get('/data/:userId', (req, res) => {
     [userId],
     (err, data) => {
       if (err) {
+        console.error(`❌ Database error: ${err.message}`);
         return res.status(500).json({ error: 'Database error' });
       }
-      res.json(data);
+      console.log(`✅ Retrieved ${data ? data.length : 0} records for userId: ${userId}`);
+      res.json(data || []);
     }
   );
 });
@@ -277,6 +281,28 @@ router.get('/analytics/:userId', (req, res) => {
       error: 'Failed to fetch analytics data'
     });
   }
+});
+
+// Delete ESG data entry
+router.delete('/data/:id', (req, res) => {
+  const { id } = req.params;
+  
+  db.run(
+    'DELETE FROM esg_data WHERE id = ?',
+    [id],
+    function(err) {
+      if (err) {
+        console.error('Delete error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Data not found' });
+      }
+      
+      res.json({ success: true, message: 'Data deleted successfully' });
+    }
+  );
 });
 
 // Verification endpoint to check stored data
